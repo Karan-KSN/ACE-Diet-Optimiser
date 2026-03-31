@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-# --- 1. SET UP THE NIN CSV DATABASE (Now with Ca & Mg) ---
+# --- 1. SET UP THE NIN CSV DATABASE ---
 @st.cache_data
 def load_data():
     df = pd.read_csv('ifct2017_compositions.csv')
@@ -17,18 +17,32 @@ def load_data():
 
 df = load_data()
 
+# --- 2. INITIALIZE SESSION STATES ---
 if 'meal_plan' not in st.session_state:
     st.session_state.meal_plan = pd.DataFrame(columns=[
         'Food Item', 'Portion', 'Energy_kcal', 'Protein_g', 'Carbs_g', 'Fat_g', 'Sodium_mg', 'Potassium_mg', 'Calcium_mg', 'Magnesium_mg'
     ])
 
-# --- 2. BUILD THE UI & TABS ---
+# State to store final saved custom recipes
+if 'custom_recipes' not in st.session_state:
+    st.session_state.custom_recipes = pd.DataFrame(columns=df.columns)
+
+# State to act as the "mixing bowl" while building a recipe
+if 'recipe_builder' not in st.session_state:
+    st.session_state.recipe_builder = pd.DataFrame(columns=[
+        'Ingredient', 'Grams', 'Energy_kcal', 'Protein_g', 'Carbs_g', 'Fat_g', 'Sodium_mg', 'Potassium_mg', 'Calcium_mg', 'Magnesium_mg'
+    ])
+
+# Combine official IFCT database with your custom recipes for the dropdowns
+combined_df = pd.concat([df, st.session_state.custom_recipes], ignore_index=True)
+
+# --- 3. BUILD THE UI & TABS ---
 st.set_page_config(page_title="Nutrigenetic CDSS", layout="centered")
 st.title("🧬 Clinical Nutrigenetic CDSS")
 st.markdown("Automated IFCT tracking, DASH Biomarkers, & ACE GxE Interactions.")
 
-# Create Clinical Dashboard Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["👤 Patient Setup", "🍲 Diet & Suggestions", "📊 Visual Analytics", "📄 Reports & Lit"])
+# Added the 5th Tab: Recipe Builder
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["👤 Patient Setup", "👨‍🍳 Recipe Builder", "🍲 Diet Log", "📊 Analytics", "📄 Reports"])
 
 # ==========================================
 # TAB 1: PATIENT DEMOGRAPHICS & GENETICS
@@ -47,7 +61,6 @@ with tab1:
         "Sedentary (Little/no exercise)", "Lightly Active", "Moderately Active", "Very Active", "Extra Active"
     ])
 
-    # BMI & TDEE Math
     height_m = height_cm / 100.0
     bmi = weight_kg / (height_m ** 2) if height_m > 0 else 0
     if bmi < 18.5: bmi_status = "Underweight"
@@ -69,12 +82,78 @@ with tab1:
     genotype = st.radio("Select ACE Genotype:", ("II / ID (Standard Risk)", "DD (High Risk - Sodium Sensitive)"), horizontal=True)
     max_sodium = 1500 if "DD" in genotype else 2300
     target_potassium = 3500 if "DD" in genotype else 2500
-    # DASH Diet Constants
     target_calcium = 1000
     target_magnesium = 400
 
 # ==========================================
-# CALCULATE LIVE TOTALS (Hidden background math)
+# TAB 2: RECIPE BUILDER (The Innovation)
+# ==========================================
+with tab2:
+    st.header("👨‍🍳 Custom Composite Recipe Engine")
+    st.markdown("Combine raw IFCT ingredients to build real household dishes. The algorithm normalizes your dish to a 100g standard for flawless daily tracking.")
+    
+    # Select Ingredient
+    recipe_ingredient = st.selectbox("Select Raw Ingredient:", df['Food Item'])
+    recipe_grams = st.number_input("Grams of this ingredient:", min_value=1, value=50, key="rec_grams")
+    
+    if st.button("➕ Add to Mixing Bowl"):
+        base = df[df['Food Item'] == recipe_ingredient].iloc[0]
+        mult = recipe_grams / 100.0
+        new_ing = pd.DataFrame([{
+            'Ingredient': recipe_ingredient, 'Grams': recipe_grams,
+            'Energy_kcal': base['Energy_kcal'] * mult, 'Protein_g': base['Protein_g'] * mult,
+            'Carbs_g': base['Carbs_g'] * mult, 'Fat_g': base['Fat_g'] * mult,
+            'Sodium_mg': base['Sodium_mg'] * mult, 'Potassium_mg': base['Potassium_mg'] * mult,
+            'Calcium_mg': base['Calcium_mg'] * mult, 'Magnesium_mg': base['Magnesium_mg'] * mult
+        }])
+        st.session_state.recipe_builder = pd.concat([st.session_state.recipe_builder, new_ing], ignore_index=True)
+        st.rerun()
+
+    # Display Mixing Bowl
+    if not st.session_state.recipe_builder.empty:
+        st.subheader("Current Mixing Bowl")
+        st.dataframe(st.session_state.recipe_builder[['Ingredient', 'Grams', 'Energy_kcal', 'Protein_g', 'Sodium_mg']], use_container_width=True)
+        
+        total_weight = st.session_state.recipe_builder['Grams'].sum()
+        st.write(f"⚖️ **Total Raw Weight:** {total_weight:.1f} g")
+        
+        # Save Recipe Math (The 100g Normalizer)
+        st.divider()
+        recipe_name = st.text_input("Name Your Dish (e.g., Dal Makhani, Roti):", "")
+        
+        if st.button("💾 Save Recipe to Database", variant="primary"):
+            if recipe_name != "":
+                # Calculate totals in the bowl
+                totals = st.session_state.recipe_builder.sum(numeric_only=True)
+                
+                # Normalize back to 100g standard
+                norm_mult = 100.0 / total_weight
+                
+                final_recipe = pd.DataFrame([{
+                    'Food Item': f"🍲 {recipe_name} (Custom)", 
+                    'Protein_g': round(totals['Protein_g'] * norm_mult, 2),
+                    'Carbs_g': round(totals['Carbs_g'] * norm_mult, 2),
+                    'Fat_g': round(totals['Fat_g'] * norm_mult, 2),
+                    'Sodium_mg': round(totals['Sodium_mg'] * norm_mult, 2),
+                    'Potassium_mg': round(totals['Potassium_mg'] * norm_mult, 2),
+                    'Energy_kcal': round(totals['Energy_kcal'] * norm_mult, 2),
+                    'Calcium_mg': round(totals['Calcium_mg'] * norm_mult, 2),
+                    'Magnesium_mg': round(totals['Magnesium_mg'] * norm_mult, 2)
+                }])
+                
+                # Save to custom database and clear bowl
+                st.session_state.custom_recipes = pd.concat([st.session_state.custom_recipes, final_recipe], ignore_index=True)
+                st.session_state.recipe_builder = pd.DataFrame(columns=st.session_state.recipe_builder.columns)
+                st.success(f"'{recipe_name}' saved! It is now permanently available in the Diet Log tab.")
+            else:
+                st.error("Please enter a name for your recipe.")
+                
+        if st.button("🗑️ Empty Mixing Bowl"):
+            st.session_state.recipe_builder = pd.DataFrame(columns=st.session_state.recipe_builder.columns)
+            st.rerun()
+
+# ==========================================
+# CALCULATE LIVE TOTALS
 # ==========================================
 curr_kcal = st.session_state.meal_plan['Energy_kcal'].sum() if not st.session_state.meal_plan.empty else 0
 curr_pro = st.session_state.meal_plan['Protein_g'].sum() if not st.session_state.meal_plan.empty else 0
@@ -89,21 +168,23 @@ rem_kcal = max(0, tdee - curr_kcal)
 rem_na = max(0, max_sodium - curr_na)
 
 # ==========================================
-# TAB 2: DIETARY INTAKE & SMART SUGGESTIONS
+# TAB 3: DIETARY INTAKE & LOGGING
 # ==========================================
-with tab2:
-    st.header("Log Food Intake")
-    portions = {"Grams (Custom Entry)": 100, "1 Katori (~150g)": 150, "1 Medium Cup (~250g)": 250, "1 Tablespoon (~15g)": 15, "1 Roti (~40g)": 40}
-    selected_food = st.selectbox("Search Indian Food Database (IFCT):", df['Food Item'])
+with tab3:
+    st.header("Log Daily Food Intake")
+    portions = {"Grams (Custom Entry)": 100, "1 Katori (~150g)": 150, "1 Medium Cup (~250g)": 250, "1 Tablespoon (~15g)": 15, "1 Roti/Piece (~40g)": 40}
+    
+    # Notice we now use combined_df so custom recipes appear here!
+    selected_food = st.selectbox("Search Database (Includes Custom Recipes):", combined_df['Food Item'])
     
     col1, col2 = st.columns(2)
     with col1:
         portion_type = st.selectbox("Select Portion Unit:", list(portions.keys()))
     with col2:
-        grams_input = st.number_input("Enter exact Grams:", min_value=1, value=portions[portion_type] if portion_type != "Grams (Custom Entry)" else 100)
+        grams_input = st.number_input("Enter exact Grams:", min_value=1, value=portions[portion_type] if portion_type != "Grams (Custom Entry)" else 100, key="log_grams")
 
     if st.button("➕ Add to Window", use_container_width=True):
-        base = df[df['Food Item'] == selected_food].iloc[0]
+        base = combined_df[combined_df['Food Item'] == selected_food].iloc[0]
         mult = grams_input / 100.0
         new_row = pd.DataFrame([{
             'Food Item': selected_food, 'Portion': f"{grams_input}g",
@@ -115,30 +196,12 @@ with tab2:
         st.session_state.meal_plan = pd.concat([st.session_state.meal_plan, new_row], ignore_index=True)
         st.rerun()
 
-    st.divider()
-    
-    # --- SMART SUGGESTION ENGINE ---
-    st.header("🤖 Smart Clinical Suggestions")
-    st.markdown("Algorithmic recommendations that fit remaining caloric and sodium windows while maximizing Potassium/Calcium for vasodilation.")
-    
-    if rem_kcal > 50 and rem_na > 10:
-        # Filter logic: Fits in calories, fits in sodium, sort by DASH impact (K + Ca + Mg)
-        safe_foods = df[(df['Energy_kcal'] <= rem_kcal) & (df['Sodium_mg'] <= rem_na)].copy()
-        safe_foods['DASH_Score'] = safe_foods['Potassium_mg'] + safe_foods['Calcium_mg'] + safe_foods['Magnesium_mg']
-        top_suggestions = safe_foods.sort_values(by='DASH_Score', ascending=False).head(3)
-        
-        for i, row in top_suggestions.iterrows():
-            st.success(f"💡 **{row['Food Item']}** (Per 100g) \n\n ⚡ {row['Energy_kcal']} kcal | 🧂 Na: {row['Sodium_mg']}mg | 🍌 K: {row['Potassium_mg']}mg | 🥛 Ca: {row['Calcium_mg']}mg")
-    else:
-        st.warning("Daily limits reached. No further food suggestions available.")
-
 # ==========================================
-# TAB 3: VISUAL ANALYTICS (DASHBOARD)
+# TAB 4: VISUAL ANALYTICS
 # ==========================================
-with tab3:
+with tab4:
     st.header("Metabolic & DASH Biomarkers")
     
-    # MACRO PIE CHART
     st.subheader("Macronutrient AMDR Distribution")
     if curr_kcal > 0:
         macro_labels = ['Protein (kcal)', 'Carbs (kcal)', 'Fats (kcal)']
@@ -148,11 +211,7 @@ with tab3:
     else:
         st.info("Log food to see macronutrient visualization.")
 
-    # MICRO RADAR CHART (DASH & ACE Tracking)
     st.subheader("RAAS & Vasodilation Radar")
-    st.markdown("Aim to push Potassium, Calcium, and Magnesium to the outer edge, while keeping Sodium strictly inside.")
-    
-    # Calculate percentages of targets (Cap at 100 for radar shape, except Sodium which we want to see if it overflows)
     pct_na = min((curr_na / max_sodium) * 100, 150) if max_sodium else 0
     pct_k = min((curr_k / target_potassium) * 100, 100) if target_potassium else 0
     pct_ca = min((curr_ca / target_calcium) * 100, 100) if target_calcium else 0
@@ -160,56 +219,25 @@ with tab3:
     
     categories = ['Sodium (Limit)', 'Potassium (Goal)', 'Calcium (Goal)', 'Magnesium (Goal)']
     fig_radar = go.Figure()
-    fig_radar.add_trace(go.Scatterpolar(
-        r=[pct_na, pct_k, pct_ca, pct_mg],
-        theta=categories,
-        fill='toself',
-        line_color='indigo'
-    ))
+    fig_radar.add_trace(go.Scatterpolar(r=[pct_na, pct_k, pct_ca, pct_mg], theta=categories, fill='toself', line_color='indigo'))
     fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 100])), showlegend=False)
     st.plotly_chart(fig_radar, use_container_width=True)
 
-    # Detailed Readout
     if curr_na > max_sodium: st.error(f"⚠️ SODIUM BREACH: {curr_na:.0f} mg / {max_sodium} mg")
     else: st.write(f"🧂 **Sodium:** {curr_na:.0f} / {max_sodium} mg")
-    st.write(f"🍌 **Potassium:** {curr_k:.0f} / {target_potassium} mg")
-    st.write(f"🥛 **Calcium:** {curr_ca:.0f} / {target_calcium} mg")
-    st.write(f"🥬 **Magnesium:** {curr_mg:.0f} / {target_magnesium} mg")
 
 # ==========================================
-# TAB 4: CLINICAL REPORTS & LITERATURE
+# TAB 5: CLINICAL REPORTS
 # ==========================================
-with tab4:
+with tab5:
     st.header("Patient Intake Log")
     if not st.session_state.meal_plan.empty:
         st.dataframe(st.session_state.meal_plan, use_container_width=True)
-        
-        # CLINICAL CSV EXPORT
         csv = st.session_state.meal_plan.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Download Clinical Report (CSV)",
-            data=csv,
-            file_name="Patient_Metabolic_Report.csv",
-            mime="text/csv",
-        )
+        st.download_button("📥 Download Clinical Report (CSV)", data=csv, file_name="Patient_Report.csv", mime="text/csv")
         
         if st.button("🗑️ Clear Patient Log"):
-            st.session_state.meal_plan = pd.DataFrame(columns=['Food Item', 'Portion', 'Energy_kcal', 'Protein_g', 'Carbs_g', 'Fat_g', 'Sodium_mg', 'Potassium_mg', 'Calcium_mg', 'Magnesium_mg'])
+            st.session_state.meal_plan = pd.DataFrame(columns=st.session_state.meal_plan.columns)
             st.rerun()
     else:
         st.info("No dietary data logged.")
-
-    st.divider()
-    with st.expander("📚 Scientific Literature & Equations Used"):
-        st.markdown("""
-        **Equations & Guidelines:**
-        * **BMR/TDEE:** Mifflin-St Jeor Equation (Mifflin et al., 1990, *Am J Clin Nutr*). 
-        * **Macronutrient Split:** AMDR guidelines (Institute of Medicine, 2005).
-        
-        **Genetics (ACE I/D):**
-        * **Srivastava et al. (2012)**: *Assoc. of ACE Gene Polymorphism with Essential Hypertension in North Indian Population.*
-        * **Poch et al. (2001)**: Confirmed GxE interaction between ACE variants and sodium limits.
-        
-        **DASH Diet Biomarkers (Ca & Mg):**
-        * **Appel et al. (1997)**: *A Clinical Trial of the Effects of Dietary Patterns on Blood Pressure (NEJM).* Established that Calcium and Magnesium are obligatory co-factors alongside Potassium for effective vasodilation.
-        """)
