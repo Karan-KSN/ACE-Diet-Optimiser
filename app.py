@@ -133,7 +133,7 @@ with tab2:
         st.divider()
         recipe_name = st.text_input("Name Your Dish (e.g., Dal Makhani, Roti):", "")
         
-        if st.button("💾 Save Recipe to Database", variant="primary"):
+        if st.button("💾 Save Recipe to Database", type="primary"):
             if recipe_name != "":
                 # Calculate totals in the bowl
                 totals = st.session_state.recipe_builder.sum(numeric_only=True)
