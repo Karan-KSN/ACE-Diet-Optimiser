@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # --- 1. SET UP THE NIN CSV DATABASE ---
+# --- 1. SET UP THE NIN CSV DATABASE ---
 @st.cache_data
 def load_data():
     df = pd.read_csv('ifct2017_compositions.csv')
@@ -13,6 +14,17 @@ def load_data():
     numeric_cols = ['Protein_g', 'Carbs_g', 'Fat_g', 'Sodium_mg', 'Potassium_mg', 'Energy_kcal', 'Calcium_mg', 'Magnesium_mg']
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
+    # --- INJECT WATER INTO THE DATABASE ---
+    water_row = pd.DataFrame([{
+        'Food Item': '💧 Water, potable (Tap/RO)', 
+        'Protein_g': 0.0, 'Carbs_g': 0.0, 'Fat_g': 0.0, 
+        'Sodium_mg': 0.0, 'Potassium_mg': 0.0, 'Energy_kcal': 0.0, 
+        'Calcium_mg': 0.0, 'Magnesium_mg': 0.0
+    }])
+    # Add water to the very top of the database
+    df = pd.concat([water_row, df], ignore_index=True)
+    
     return df
 
 df = load_data()
