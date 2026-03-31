@@ -24,6 +24,23 @@ if 'meal_plan' not in st.session_state:
 st.set_page_config(page_title="Nutrigenetic Optimizer", layout="centered")
 st.title("🧬 Nutrigenetic Meal Optimizer")
 st.markdown("Clinical IFCT tracking pipeline for ACE I/D GxE interactions.")
+# --- SCIENTIFIC JUSTIFICATION EXPANDER ---
+with st.expander("📚 Scientific Rationale & Literature (Click to expand)"):
+    st.markdown("""
+    **Core Biological Premise:**
+    This Clinical Decision Support System (CDSS) automates Gene-Environment (GxE) interaction tracking for the Angiotensin-Converting Enzyme (ACE) I/D polymorphism. 
+    
+    Patients with the **DD Genotype** exhibit higher circulating ACE levels, leading to an overactive Renin-Angiotensin-Aldosterone System (RAAS). This phenotype is highly salt-sensitive; excess dietary sodium induces severe vasoconstriction, while dietary potassium acts as a crucial vasodilator.
+
+    **Key References:**
+    * **Srivastava et al. (2012)**: *Association of Angiotensin-Converting Enzyme (ACE) Gene Polymorphism with Essential Hypertension in a North Indian Population.* Established the baseline risk of the D allele in local cohorts.
+    * **Poch et al. (2001)**: *Molecular basis of salt sensitivity in human hypertension.* Confirmed the interaction between ACE variants and sodium limits.
+    * **Long et al. (2015)**: *Dietary Composition and BMI in the Context of ACE Genotype.* Highlighted that high-carbohydrate and high-fat macros further compound metabolic risk in DD carriers, necessitating strict macronutrient window tracking.
+    
+    **Database:**
+    Nutritional calculations strictly utilize the **Indian Food Composition Tables (IFCT, 2017)** by the ICMR-National Institute of Nutrition (NIN) to ensure localized bioavailability and regional accuracy.
+    """)
+st.divider()
 
 # --- 3. PATIENT DEMOGRAPHICS & ANTHROPOMETRY ---
 st.header("1. Patient Demographics")
