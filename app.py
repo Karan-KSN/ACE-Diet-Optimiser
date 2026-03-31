@@ -15,7 +15,6 @@ def load_data():
 
 df = load_data()
 
-# Initialize the state tracker
 if 'meal_plan' not in st.session_state:
     st.session_state.meal_plan = pd.DataFrame(columns=[
         'Food Item', 'Portion', 'Sodium_mg', 'Potassium_mg', 'Protein_g', 'Carbs_g', 'Fat_g'
@@ -24,9 +23,40 @@ if 'meal_plan' not in st.session_state:
 # --- 2. BUILD THE MOBILE-FRIENDLY UI ---
 st.set_page_config(page_title="Nutrigenetic Optimizer", layout="centered")
 st.title("🧬 Nutrigenetic Meal Optimizer")
+st.markdown("Clinical IFCT tracking pipeline for ACE I/D GxE interactions.")
 
-# Moved Genetic Profile out of the sidebar into the main screen
-st.header("1. Metabolic & Genetic Windows")
+# --- 3. PATIENT DEMOGRAPHICS & ANTHROPOMETRY ---
+st.header("1. Patient Demographics")
+col_age, col_gen = st.columns(2)
+age = col_age.number_input("Age (Years)", min_value=1, max_value=120, value=45)
+gender = col_gen.selectbox("Gender", ["Male", "Female", "Other"])
+
+col_h, col_w = st.columns(2)
+height_cm = col_h.number_input("Height (cm)", min_value=50.0, max_value=300.0, value=170.0)
+weight_kg = col_w.number_input("Weight (kg)", min_value=10.0, max_value=300.0, value=70.0)
+
+# Auto-calculate BMI
+height_m = height_cm / 100.0
+if height_m > 0:
+    bmi = weight_kg / (height_m ** 2)
+else:
+    bmi = 0.0
+
+# BMI Risk Categorization (Asian/Indian Standards)
+if bmi < 18.5:
+    bmi_status = "Underweight"
+elif 18.5 <= bmi <= 22.9:
+    bmi_status = "Normal (Asian Standard)"
+elif 23.0 <= bmi <= 24.9:
+    bmi_status = "Overweight"
+else:
+    bmi_status = "Obese"
+
+st.info(f"⚖️ **Auto-Calculated BMI:** {bmi:.1f} kg/m² | **Classification:** {bmi_status}")
+st.divider()
+
+# --- 4. GENETIC PROFILE & METABOLIC WINDOWS ---
+st.header("2. Genetic Profile & Targets")
 genotype = st.radio(
     "Select ACE I/D Genotype:",
     ("II / ID (Standard Risk)", "DD (High Risk - Sodium Sensitive)"),
@@ -40,21 +70,18 @@ else:
     max_sodium = 2300
     target_potassium = 2500
 
-st.info(f"🔬 **Micro Windows:** Max Sodium = {max_sodium} mg | Target Potassium = {target_potassium} mg")
+st.write(f"🔬 **Micro Windows Assigned:** Max Sodium = {max_sodium} mg | Target Potassium = {target_potassium} mg")
 
-# Macro Target Inputs
 st.markdown("**Set Daily Macro Targets:**")
 col_p, col_c, col_f = st.columns(3)
 target_protein = col_p.number_input("Protein (g)", value=120)
 target_carbs = col_c.number_input("Carbs (g)", value=250)
 target_fat = col_f.number_input("Fats (g)", value=60)
-
 st.divider()
 
-# --- 3. FOOD & QUANTITY SELECTION LOGIC ---
-st.header("2. Add Food Intake")
+# --- 5. FOOD & QUANTITY SELECTION LOGIC ---
+st.header("3. Add Food Intake")
 
-# Define standard portion sizes in grams for the mathematical multiplier
 portions = {
     "Grams (Custom Entry)": 100,
     "1 Katori / Small Bowl (~150g)": 150,
@@ -63,7 +90,7 @@ portions = {
     "1 Standard Piece/Roti (~40g)": 40
 }
 
-selected_food = st.selectbox("Search Indian Food Database (IFCT Base: 100g):", df['Food Item'])
+selected_food = st.selectbox("Search Indian Food Database (IFCT):", df['Food Item'])
 
 col1, col2 = st.columns(2)
 with col1:
@@ -76,13 +103,9 @@ with col2:
         st.number_input("Equivalent Grams (Auto-calculated):", value=grams_input, disabled=True)
 
 if st.button("➕ Add to Intake Window", use_container_width=True):
-    # Fetch base 100g values
     base_data = df[df['Food Item'] == selected_food].iloc[0]
-    
-    # Calculate IFCT multiplier
     multiplier = grams_input / 100.0
     
-    # Create new row with adjusted, multiplier-applied values
     new_row = pd.DataFrame([{
         'Food Item': selected_food,
         'Portion': f"{grams_input}g",
@@ -96,16 +119,16 @@ if st.button("➕ Add to Intake Window", use_container_width=True):
 
 st.divider()
 
-# --- 4. CALCULATE TOTALS & RENDER PROGRESS ---
+# --- 6. LIVE METABOLIC TRACKING ---
 current_sodium = st.session_state.meal_plan['Sodium_mg'].sum() if not st.session_state.meal_plan.empty else 0
 current_potassium = st.session_state.meal_plan['Potassium_mg'].sum() if not st.session_state.meal_plan.empty else 0
 current_protein = st.session_state.meal_plan['Protein_g'].sum() if not st.session_state.meal_plan.empty else 0
 current_carbs = st.session_state.meal_plan['Carbs_g'].sum() if not st.session_state.meal_plan.empty else 0
 current_fats = st.session_state.meal_plan['Fat_g'].sum() if not st.session_state.meal_plan.empty else 0
 
-st.header("3. Live Metabolic Tracking")
+st.header("4. Live Metabolic Tracking")
 
-# Macro Windows (Consumed vs Left)
+# Macro Windows
 st.subheader("Macronutrient Windows")
 st.write(f"🥩 **Protein:** {current_protein:.1f}g Consumed | **{max(0, target_protein - current_protein):.1f}g Left**")
 st.progress(min(current_protein / target_protein, 1.0))
@@ -118,7 +141,7 @@ st.progress(min(current_fats / target_fat, 1.0))
 
 st.markdown("---")
 
-# Micro Windows (Sodium & Potassium)
+# Micro Windows
 st.subheader("Genetic Micronutrient Windows (RAAS)")
 
 st.write(f"🧂 **Sodium:** {current_sodium:.1f} mg Consumed | **{max(0, max_sodium - current_sodium):.1f} mg Left**")
@@ -131,7 +154,7 @@ if current_potassium >= target_potassium:
     st.success("🎯 TARGET REACHED: Optimal vasodilation support.")
 st.progress(min(current_potassium / target_potassium, 1.0))
 
-# --- 5. DISPLAY CURRENT INTAKE LOG ---
+# --- 7. CURRENT INTAKE LOG ---
 st.subheader("Current Intake Log")
 if not st.session_state.meal_plan.empty:
     st.dataframe(st.session_state.meal_plan, use_container_width=True)
