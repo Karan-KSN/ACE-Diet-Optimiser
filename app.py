@@ -104,9 +104,14 @@ with tab2:
     st.header("👨‍🍳 Custom Composite Recipe Engine")
     st.markdown("Combine raw IFCT ingredients to build real household dishes. The algorithm normalizes your dish to a 100g standard for flawless daily tracking.")
     
-    # Select Ingredient
     recipe_ingredient = st.selectbox("Select Raw Ingredient:", df['Food Item'])
-    recipe_grams = st.number_input("Grams of this ingredient:", min_value=1, value=50, key="rec_grams")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        rec_portion_type = st.selectbox("Select Unit:", ["Grams", "Milliliters (ml)"], key="rec_port")
+    with col2:
+        unit_label = "ml" if "ml" in rec_portion_type else "Grams"
+        recipe_grams = st.number_input(f"Enter exact {unit_label}:", min_value=1.0, value=50.0, key="rec_grams")
     
     if st.button("➕ Add to Mixing Bowl"):
         base = df[df['Food Item'] == recipe_ingredient].iloc[0]
@@ -121,24 +126,20 @@ with tab2:
         st.session_state.recipe_builder = pd.concat([st.session_state.recipe_builder, new_ing], ignore_index=True)
         st.rerun()
 
-    # Display Mixing Bowl
     if not st.session_state.recipe_builder.empty:
         st.subheader("Current Mixing Bowl")
         st.dataframe(st.session_state.recipe_builder[['Ingredient', 'Grams', 'Energy_kcal', 'Protein_g', 'Sodium_mg']], use_container_width=True)
         
         total_weight = st.session_state.recipe_builder['Grams'].sum()
-        st.write(f"⚖️ **Total Raw Weight:** {total_weight:.1f} g")
+        st.write(f"⚖️ **Total Raw Weight/Volume:** {total_weight:.1f} g/ml")
         
-        # Save Recipe Math (The 100g Normalizer)
         st.divider()
         recipe_name = st.text_input("Name Your Dish (e.g., Dal Makhani, Roti):", "")
         
+        # Fixed the TypeError bug here too!
         if st.button("💾 Save Recipe to Database", type="primary"):
             if recipe_name != "":
-                # Calculate totals in the bowl
                 totals = st.session_state.recipe_builder.sum(numeric_only=True)
-                
-                # Normalize back to 100g standard
                 norm_mult = 100.0 / total_weight
                 
                 final_recipe = pd.DataFrame([{
@@ -153,7 +154,6 @@ with tab2:
                     'Magnesium_mg': round(totals['Magnesium_mg'] * norm_mult, 2)
                 }])
                 
-                # Save to custom database and clear bowl
                 st.session_state.custom_recipes = pd.concat([st.session_state.custom_recipes, final_recipe], ignore_index=True)
                 st.session_state.recipe_builder = pd.DataFrame(columns=st.session_state.recipe_builder.columns)
                 st.success(f"'{recipe_name}' saved! It is now permanently available in the Diet Log tab.")
@@ -163,43 +163,38 @@ with tab2:
         if st.button("🗑️ Empty Mixing Bowl"):
             st.session_state.recipe_builder = pd.DataFrame(columns=st.session_state.recipe_builder.columns)
             st.rerun()
-
-# ==========================================
-# CALCULATE LIVE TOTALS
-# ==========================================
-curr_kcal = st.session_state.meal_plan['Energy_kcal'].sum() if not st.session_state.meal_plan.empty else 0
-curr_pro = st.session_state.meal_plan['Protein_g'].sum() if not st.session_state.meal_plan.empty else 0
-curr_carb = st.session_state.meal_plan['Carbs_g'].sum() if not st.session_state.meal_plan.empty else 0
-curr_fat = st.session_state.meal_plan['Fat_g'].sum() if not st.session_state.meal_plan.empty else 0
-curr_na = st.session_state.meal_plan['Sodium_mg'].sum() if not st.session_state.meal_plan.empty else 0
-curr_k = st.session_state.meal_plan['Potassium_mg'].sum() if not st.session_state.meal_plan.empty else 0
-curr_ca = st.session_state.meal_plan['Calcium_mg'].sum() if not st.session_state.meal_plan.empty else 0
-curr_mg = st.session_state.meal_plan['Magnesium_mg'].sum() if not st.session_state.meal_plan.empty else 0
-
-rem_kcal = max(0, tdee - curr_kcal)
-rem_na = max(0, max_sodium - curr_na)
-
 # ==========================================
 # TAB 3: DIETARY INTAKE & LOGGING
 # ==========================================
 with tab3:
     st.header("Log Daily Food Intake")
-    portions = {"Grams (Custom Entry)": 100, "1 Katori (~150g)": 150, "1 Medium Cup (~250g)": 250, "1 Tablespoon (~15g)": 15, "1 Roti/Piece (~40g)": 40}
+    portions = {
+        "Grams (Custom Entry)": 100, 
+        "Milliliters (ml - Liquids)": 100,
+        "1 Katori (~150g)": 150, 
+        "1 Medium Cup (~250g)": 250, 
+        "1 Tablespoon (~15g)": 15, 
+        "1 Roti/Piece (~40g)": 40
+    }
     
-    # Notice we now use combined_df so custom recipes appear here!
     selected_food = st.selectbox("Search Database (Includes Custom Recipes):", combined_df['Food Item'])
     
     col1, col2 = st.columns(2)
     with col1:
-        portion_type = st.selectbox("Select Portion Unit:", list(portions.keys()))
+        portion_type = st.selectbox("Select Portion Unit:", list(portions.keys()), key="log_port")
     with col2:
-        grams_input = st.number_input("Enter exact Grams:", min_value=1, value=portions[portion_type] if portion_type != "Grams (Custom Entry)" else 100, key="log_grams")
+        if portion_type in ["Grams (Custom Entry)", "Milliliters (ml - Liquids)"]:
+            unit_label = "ml" if "ml" in portion_type else "Grams"
+            grams_input = st.number_input(f"Enter exact {unit_label}:", min_value=1.0, value=100.0, key="log_grams")
+        else:
+            grams_input = portions[portion_type]
+            st.number_input("Equivalent Grams/ml:", value=float(grams_input), disabled=True, key="log_grams_auto")
 
     if st.button("➕ Add to Window", use_container_width=True):
         base = combined_df[combined_df['Food Item'] == selected_food].iloc[0]
         mult = grams_input / 100.0
         new_row = pd.DataFrame([{
-            'Food Item': selected_food, 'Portion': f"{grams_input}g",
+            'Food Item': selected_food, 'Portion': f"{grams_input}g/ml",
             'Energy_kcal': round(base['Energy_kcal'] * mult, 1), 'Protein_g': round(base['Protein_g'] * mult, 1),
             'Carbs_g': round(base['Carbs_g'] * mult, 1), 'Fat_g': round(base['Fat_g'] * mult, 1),
             'Sodium_mg': round(base['Sodium_mg'] * mult, 1), 'Potassium_mg': round(base['Potassium_mg'] * mult, 1),
@@ -207,7 +202,6 @@ with tab3:
         }])
         st.session_state.meal_plan = pd.concat([st.session_state.meal_plan, new_row], ignore_index=True)
         st.rerun()
-
 # ==========================================
 # TAB 4: VISUAL ANALYTICS
 # ==========================================
