@@ -4,7 +4,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # --- 1. SET UP THE NIN CSV DATABASE ---
-# --- 1. SET UP THE NIN CSV DATABASE ---
 @st.cache_data
 def load_data():
     df = pd.read_csv('ifct2017_compositions.csv')
@@ -15,16 +14,14 @@ def load_data():
     for col in numeric_cols:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
-    # --- INJECT WATER INTO THE DATABASE ---
+    # INJECT WATER INTO THE DATABASE
     water_row = pd.DataFrame([{
         'Food Item': '💧 Water, potable (Tap/RO)', 
         'Protein_g': 0.0, 'Carbs_g': 0.0, 'Fat_g': 0.0, 
         'Sodium_mg': 0.0, 'Potassium_mg': 0.0, 'Energy_kcal': 0.0, 
         'Calcium_mg': 0.0, 'Magnesium_mg': 0.0
     }])
-    # Add water to the very top of the database
     df = pd.concat([water_row, df], ignore_index=True)
-    
     return df
 
 df = load_data()
@@ -35,17 +32,14 @@ if 'meal_plan' not in st.session_state:
         'Food Item', 'Portion', 'Energy_kcal', 'Protein_g', 'Carbs_g', 'Fat_g', 'Sodium_mg', 'Potassium_mg', 'Calcium_mg', 'Magnesium_mg'
     ])
 
-# State to store final saved custom recipes
 if 'custom_recipes' not in st.session_state:
     st.session_state.custom_recipes = pd.DataFrame(columns=df.columns)
 
-# State to act as the "mixing bowl" while building a recipe
 if 'recipe_builder' not in st.session_state:
     st.session_state.recipe_builder = pd.DataFrame(columns=[
         'Ingredient', 'Grams', 'Energy_kcal', 'Protein_g', 'Carbs_g', 'Fat_g', 'Sodium_mg', 'Potassium_mg', 'Calcium_mg', 'Magnesium_mg'
     ])
 
-# Combine official IFCT database with your custom recipes for the dropdowns
 combined_df = pd.concat([df, st.session_state.custom_recipes], ignore_index=True)
 
 # --- 3. BUILD THE UI & TABS ---
@@ -53,7 +47,6 @@ st.set_page_config(page_title="Nutrigenetic CDSS", layout="centered")
 st.title("🧬 Clinical Nutrigenetic CDSS")
 st.markdown("Automated IFCT tracking, DASH Biomarkers, & ACE GxE Interactions.")
 
-# Added the 5th Tab: Recipe Builder
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["👤 Patient Setup", "👨‍🍳 Recipe Builder", "🍲 Diet Log", "📊 Analytics", "📄 Reports"])
 
 # ==========================================
@@ -98,11 +91,11 @@ with tab1:
     target_magnesium = 400
 
 # ==========================================
-# TAB 2: RECIPE BUILDER (The Innovation)
+# TAB 2: RECIPE BUILDER
 # ==========================================
 with tab2:
     st.header("👨‍🍳 Custom Composite Recipe Engine")
-    st.markdown("Combine raw IFCT ingredients to build real household dishes. The algorithm normalizes your dish to a 100g standard for flawless daily tracking.")
+    st.markdown("Combine raw IFCT ingredients to build real household dishes. The algorithm normalizes your dish to a 100g standard.")
     
     recipe_ingredient = st.selectbox("Select Raw Ingredient:", df['Food Item'])
     
@@ -136,7 +129,6 @@ with tab2:
         st.divider()
         recipe_name = st.text_input("Name Your Dish (e.g., Dal Makhani, Roti):", "")
         
-        # Fixed the TypeError bug here too!
         if st.button("💾 Save Recipe to Database", type="primary"):
             if recipe_name != "":
                 totals = st.session_state.recipe_builder.sum(numeric_only=True)
@@ -163,6 +155,7 @@ with tab2:
         if st.button("🗑️ Empty Mixing Bowl"):
             st.session_state.recipe_builder = pd.DataFrame(columns=st.session_state.recipe_builder.columns)
             st.rerun()
+
 # ==========================================
 # TAB 3: DIETARY INTAKE & LOGGING
 # ==========================================
@@ -202,6 +195,19 @@ with tab3:
         }])
         st.session_state.meal_plan = pd.concat([st.session_state.meal_plan, new_row], ignore_index=True)
         st.rerun()
+
+# ==========================================
+# CALCULATE LIVE TOTALS (This was missing!)
+# ==========================================
+curr_kcal = st.session_state.meal_plan['Energy_kcal'].sum() if not st.session_state.meal_plan.empty else 0
+curr_pro = st.session_state.meal_plan['Protein_g'].sum() if not st.session_state.meal_plan.empty else 0
+curr_carb = st.session_state.meal_plan['Carbs_g'].sum() if not st.session_state.meal_plan.empty else 0
+curr_fat = st.session_state.meal_plan['Fat_g'].sum() if not st.session_state.meal_plan.empty else 0
+curr_na = st.session_state.meal_plan['Sodium_mg'].sum() if not st.session_state.meal_plan.empty else 0
+curr_k = st.session_state.meal_plan['Potassium_mg'].sum() if not st.session_state.meal_plan.empty else 0
+curr_ca = st.session_state.meal_plan['Calcium_mg'].sum() if not st.session_state.meal_plan.empty else 0
+curr_mg = st.session_state.meal_plan['Magnesium_mg'].sum() if not st.session_state.meal_plan.empty else 0
+
 # ==========================================
 # TAB 4: VISUAL ANALYTICS
 # ==========================================
